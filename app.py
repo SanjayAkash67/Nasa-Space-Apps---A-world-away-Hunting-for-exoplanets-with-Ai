@@ -6,12 +6,20 @@ import plotly.express as px
 import lightkurve as lk
 import warnings
 from sklearn.model_selection import train_test_split
-import os       # <-- NEW import
-import shutil   # <-- NEW import
+import google.generativeai as genai
+import os
+import shutil
 
 # --- Page Configuration ---
-st.set_page_config(page_title="Exoplanet Explorer", page_icon="🔭", layout="wide")
+st.set_page_config(page_title="Exoplanet Discovery Engine", page_icon="🚀", layout="wide")
 warnings.filterwarnings('ignore', category=UserWarning)
+
+# --- API Key Configuration ---
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+except (KeyError, AttributeError):
+    st.warning("⚠️ Gemini API key not found. The AI Science Communicator will be disabled.")
+    genai = None
 
 # --- Model Loading ---
 @st.cache_resource
@@ -19,27 +27,47 @@ def load_model():
     try:
         model = tf.keras.models.load_model('models/exoplanet_model_final.h5')
         return model
-    except Exception as e:
-        st.error(f"Error loading model: {e}")
+    except Exception:
         return None
 
+# --- LLM Science Communicator Function ---
+@st.cache_data
+def get_llm_explanation(_data_dict):
+    if not genai:
+        return "AI Science Communicator is disabled (API key not configured)."
+    
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    prompt = f"""
+    You are an expert astronomer for the NASA Space Apps Challenge.
+    Explain the results of an exoplanet transit search for a star named '{_data_dict['star_name']}' in an exciting, one-paragraph summary.
+
+    Data discovered:
+    - Orbital Period: {_data_dict['period']:.4f} days
+    - Transit Duration: {_data_dict['duration']:.2f} hours
+    - Transit Depth: {_data_dict['depth']:.4f}
+
+    Explain these numbers simply (e.g., orbital period is the planet's "year", depth relates to its size).
+    """
+    try:
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception:
+        return "Could not generate explanation at this time."
+
+# --- Main App ---
 model = load_model()
-
-# --- Main App Interface ---
-st.title('🔭 AI Exoplanet Explorer')
-st.write("A tool to analyze star data, featuring a trained AI classifier and a live data explorer for NASA's Kepler and TESS missions.")
-
-# --- Create Tabs ---
-tab1, tab2 = st.tabs(["🤖 AI Classifier (Demo)", "🛰️ Live Multi-Mission Explorer"])
+st.title('🚀 AI Exoplanet Discovery Engine')
+st.write("An advanced tool for exoplanet discovery, combining a trained AI classifier with a live, automated transit detection system for NASA's Kepler and TESS missions.")
+tab1, tab2 = st.tabs(["🤖 AI Classifier (Demo)", "🛰️ Automated Discovery Engine (Live)"])
 
 # ==============================================================================
-# TAB 1: AI Classifier (No changes here)
+# TAB 1: AI Classifier
 # ==============================================================================
 with tab1:
-    # ... (The code for Tab 1 remains exactly the same as before) ...
     st.header("Classify a Star from the Kepler Dataset")
-    st.write("This tab demonstrates the power of our pre-trained AI model to classify a star system.")
-    if model is not None and st.button('Analyze a Random Star', type="primary", key="classify_button"):
+    if model is None:
+        st.error("AI model `exoplanet_model_final.h5` not found.")
+    elif st.button('Analyze a Random Star', type="primary", key="classify_button"):
         df = pd.read_csv('data/data.csv')
         df.fillna(0, inplace=True)
         df_display = df.copy()
@@ -67,55 +95,86 @@ with tab1:
         res2.metric("AI Confidence Score", f"{prediction_prob:.2%}")
 
 # ==============================================================================
-# TAB 2: Live Multi-Mission Explorer - UPGRADED with Cache Clearing
+# TAB 2: Automated Discovery Engine - FINAL
 # ==============================================================================
 with tab2:
-    st.header("Explore Live Data from NASA's MAST Archive")
+    st.header("Automated Transit Search in NASA's Live Archives")
+    st.info("This analysis can take 1-2 minutes as it involves downloading and processing real scientific data.")
     
     mission = st.selectbox("Select Mission:", ("Kepler", "TESS"))
-
+    
     if mission == "Kepler":
-        id_label = "Kepler ID (KIC)"
-        default_id = "8462852"
-        id_prefix = "KIC"
-    else: # TESS
-        id_label = "TESS ID (TIC)"
-        default_id = "150428135"
-        id_prefix = "TIC"
+        id_label, default_id, id_prefix = "Kepler ID (KIC)", "6541920", "KIC"
+    else:
+        id_label, default_id, id_prefix = "TESS ID (TIC)", "150428135", "TIC"
 
     target_id = st.text_input(f"Enter {id_label}", default_id)
 
-    if st.button("Fetch and Visualize Light Curve", key="fetch_button"):
+    if st.button("Search for Transits!", key="fetch_button", type="primary"):
         if not target_id:
             st.warning(f"Please enter a {id_label}.")
         else:
             try:
                 search_string = f"{id_prefix} {target_id}"
-                with st.spinner(f"Searching for {search_string} in the {mission} database..."):
+                
+                with st.spinner(f"1/3: Searching for {search_string}..."):
                     search_result = lk.search_lightcurve(search_string, mission=mission)
                     if not search_result:
-                        st.error(f"No light curve data found for this ID in the {mission} mission.")
+                        st.error(f"No data found for this ID in {mission}.")
+                        st.stop()
+                
+                with st.spinner(f"2/3: Downloading a subset of data..."):
+                    lc_collection = search_result[0:5].download_all()
+                    lc = lc_collection.stitch().remove_nans().normalize().remove_outliers()
+
+                with st.spinner("3/3: Analyzing light curve for transit signals..."):
+                    bls = lc.to_periodogram(method='bls')
+                    period = bls.period_at_max_power
+                    transit_time = bls.transit_time_at_max_power
+                    duration = bls.duration_at_max_power
+                    
+                    # --- THIS IS THE DEFINITIVE FIX ---
+                    # Get the raw numerical value of the depth
+                    depth_value_raw = bls.depth_at_max_power.value
+                    # Check if this raw value is a scalar (a single number)
+                    if np.isscalar(depth_value_raw):
+                        depth_value = depth_value_raw
                     else:
-                        lc_collection = search_result.download_all()
-                        lc = lc_collection.stitch().remove_nans().normalize().remove_outliers()
-                        st.success(f"Successfully downloaded data for {lc.label}.")
-                        fig = px.scatter(x=lc.time.value, y=lc.flux.value, title=f'Interactive Light Curve for {lc.label}', labels={'x': 'Time', 'y': 'Normalized Flux'})
-                        fig.update_traces(mode='lines+markers', marker=dict(size=2, opacity=0.7))
-                        st.plotly_chart(fig, use_container_width=True)
+                        # If it's an array, take the first element
+                        depth_value = depth_value_raw[0]
+                    # ------------------------------------
+
+                    in_transit_mask = bls.get_transit_mask(period=period, transit_time=transit_time, duration=duration)
+
+                st.success("Analysis complete! A potential transit signal was detected.")
+
+                st.subheader("Detected Signal Properties")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Orbital Period (days)", f"{period.value:.4f}")
+                c2.metric("Transit Duration (hours)", f"{(duration.to('h')).value:.2f}")
+                c3.metric("Transit Depth", f"{depth_value:.4f}")
+
+                st.subheader("🤖 AI Science Communicator's Report")
+                explanation_data = {"star_name": lc.label, "period": period.value, "duration": (duration.to('h')).value, "depth": depth_value}
+                explanation = get_llm_explanation(explanation_data)
+                st.write(explanation)
+
+                st.subheader("Interactive Light Curve with Detected Transits Highlighted")
+                plot_df = lc.to_pandas().reset_index(); plot_df['highlight'] = np.where(in_transit_mask, 'In Transit', 'Out of Transit')
+                fig = px.scatter(plot_df, x='time', y='flux', color='highlight', color_discrete_map={'In Transit': 'red', 'Out of Transit': 'blue'}, title=f'Interactive Light Curve for {lc.label}')
+                fig.update_traces(marker=dict(size=3, opacity=0.8))
+                st.plotly_chart(fig, use_container_width=True)
+
             except Exception as e:
                 st.error(f"An error occurred: {e}")
-                st.info("This might be due to a corrupted file in the cache. Try clearing the cache below.")
+                st.info("This might be due to a network issue or a problem with the data file. Try another ID or try clearing the cache below.")
 
     st.write("---")
     st.subheader("Troubleshooting")
     if st.button("Clear Download Cache"):
         try:
-            # Find the lightkurve cache directory
-            cache_dir = os.path.join(os.path.expanduser('~'), '.lightkurve-cache')
-            if os.path.exists(cache_dir):
-                shutil.rmtree(cache_dir)
-                st.success(f"Cache cleared successfully from {cache_dir}!")
-            else:
-                st.warning("Cache directory not found (it may already be clear).")
+            cache_dir = lk.get_cache_dir()
+            shutil.rmtree(cache_dir)
+            st.success("Cache cleared successfully!")
         except Exception as e:
             st.error(f"Could not clear cache: {e}")

@@ -2,3 +2,8 @@ tensorflow
 pandas
 numpy
 scikit-learn
+streamlit
+astroquery
+plotly
+lightkurve
+google-generativeai

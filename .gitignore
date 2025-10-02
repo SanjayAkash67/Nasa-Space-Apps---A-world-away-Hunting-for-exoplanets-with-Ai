@@ -14,7 +14,7 @@ __pycache__/
 # Large data files
 # It's best practice not to commit large CSV files to Git.
 # Your README file will tell people where to download the data.
-data/data.csv
+.data/data.csv/
 
 # Lightkurve cache directory
 .lightkurve-cache/
@@ -27,7 +27,7 @@ data/data.csv
 .idea/
 
 # Large data files
-data/data.csv
+.data/data.csv/
 
 # Lightkurve cache
 .lightkurve-cache/
