@@ -1,0 +1,23 @@
+# Python virtual environment
+# Based on your logs, your venv is named 'nasaenv'
+nasaenv/
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# IDE/Editor specific files
+.vscode/
+.idea/
+
+# Large data files
+# It's best practice not to commit large CSV files to Git.
+# Your README file will tell people where to download the data.
+data/data.csv
+
+# Lightkurve cache directory
+.lightkurve-cache/
+
+# Streamlit config file (if you create one)
+.streamlit/
