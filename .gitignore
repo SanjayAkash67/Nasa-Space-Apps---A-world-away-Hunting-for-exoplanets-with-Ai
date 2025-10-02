@@ -21,3 +21,25 @@ data/data.csv
 
 # Streamlit config file (if you create one)
 .streamlit/
+
+# IDE/Editor files
+.vscode/
+.idea/
+
+# Large data files
+data/data.csv
+
+# Lightkurve cache
+.lightkurve-cache/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+
+# Streamlit
+.streamlit/
