@@ -7,3 +7,4 @@ astroquery
 plotly
 lightkurve
 google-generativeai
+python-dotenv
