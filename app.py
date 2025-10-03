@@ -14,12 +14,22 @@ import shutil
 st.set_page_config(page_title="Exoplanet Discovery Engine", page_icon="🚀", layout="wide")
 warnings.filterwarnings('ignore', category=UserWarning)
 
-# --- Initialize Session State for Logbook ---
+# --- Define Logbook File Path ---
+LOGBOOK_FILE = 'logbook.csv'
+
+# --- Initialize Session State and Load Logbook from CSV ---
 if 'history' not in st.session_state:
-    st.session_state.history = []
+    try:
+        # Try to load the logbook from the CSV file
+        history_df = pd.read_csv(LOGBOOK_FILE)
+        st.session_state.history = history_df.to_dict('records')
+    # --- THIS IS THE FIX: Also handle the case where the file is empty ---
+    except (FileNotFoundError, pd.errors.EmptyDataError):
+        # If the file doesn't exist or is empty, start with an empty logbook
+        st.session_state.history = []
+    # --------------------------------------------------------------------
 
 # --- API Key & Model Loading ---
-# (Same as before)
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 except (KeyError, AttributeError):
@@ -34,11 +44,10 @@ def load_model():
 model = load_model()
 
 # --- LLM Function ---
-# (Same as before)
 @st.cache_data
 def get_llm_explanation(_data_dict):
     if not genai: return "AI Science Communicator is disabled."
-    gen_model = genai.GenerativeModel('gemini-pro-latest')  # Use the latest Gemini Pro model
+    gen_model = genai.GenerativeModel('models/gemini-pro-latest')
     prompt = f"You are an expert astronomer for NASA. Explain the results of an exoplanet transit search for '{_data_dict['star_name']}' in an exciting, one-paragraph summary. Data: Orbital Period: {_data_dict['period']:.4f} days, Transit Duration: {_data_dict['duration']:.2f} hours, Transit Depth: {_data_dict['depth']:.4f}. Explain these simply (e.g., period is the planet's 'year')."
     try:
         return gen_model.generate_content(prompt).text
@@ -85,7 +94,6 @@ with tab1:
                 c2.metric("Transit Duration (hours)", f"{(duration.to('h')).value:.2f}")
                 c3.metric("Transit Depth", f"{depth_value:.4f}")
                 
-                # --- ADD TO LOGBOOK ---
                 log_entry = {
                     "Star Name": lc.label,
                     "Period (days)": f"{period.value:.4f}",
@@ -93,7 +101,8 @@ with tab1:
                     "Depth": f"{depth_value:.4f}"
                 }
                 st.session_state.history.append(log_entry)
-                # ----------------------
+                pd.DataFrame(st.session_state.history).to_csv(LOGBOOK_FILE, index=False)
+                st.toast("Discovery saved to logbook!")
 
                 st.subheader("🤖 AI Science Communicator's Report")
                 explanation_data = {"star_name": lc.label, "period": period.value, "duration": (duration.to('h')).value, "depth": depth_value}
@@ -109,7 +118,6 @@ with tab1:
 # TAB 2: Manual Analysis
 # ==============================================================================
 with tab2:
-    # (The code for Tab 2 remains the same as before)
     st.title("🔬 Manual Data Analysis")
     st.write("Upload your own custom data files to classify and analyze a star system.")
     if model is None: st.error("AI Classifier model is not loaded.")
@@ -118,7 +126,6 @@ with tab2:
         lightcurve_file = st.file_uploader("Upload Light Curve CSV", type="csv")
         if features_file and lightcurve_file:
             if st.button("Analyze Uploaded Data", type="primary"):
-                # ... (rest of the manual analysis code)
                 st.header("Step 2: AI Classifier Result")
                 features_df = pd.read_csv(features_file)
                 features_values = features_df.values
@@ -143,19 +150,20 @@ with tab2:
                 st.plotly_chart(fig, use_container_width=True)
 
 # ==============================================================================
-# TAB 3: Discovery Logbook - NEW
+# TAB 3: Discovery Logbook
 # ==============================================================================
 with tab3:
     st.header("📖 Your Discovery Logbook")
-    st.write("This logbook keeps a temporary record of the potential candidates you've discovered during this session.")
+    st.write("This logbook saves a persistent record of the candidates you've discovered.")
     
     if not st.session_state.history:
-        st.info("You haven't discovered any candidates yet in this session. Go to the 'Live Discovery Engine' to find some!")
+        st.info("You haven't discovered any candidates yet. Discover some in the 'Live Discovery Engine' tab!")
     else:
-        # Convert the list of dictionaries to a pandas DataFrame for nice display
         history_df = pd.DataFrame(st.session_state.history)
         st.dataframe(history_df, use_container_width=True)
         
         if st.button("Clear Logbook"):
             st.session_state.history = []
+            if os.path.exists(LOGBOOK_FILE):
+                os.remove(LOGBOOK_FILE)
             st.rerun()
