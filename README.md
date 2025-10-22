@@ -36,7 +36,7 @@ Follow these steps to run the application locally.
 
 **1. Clone the Repository:**
 ```bash
-git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
+git clone https://github.com/SanjayAkash67/A-world-away-Hunting-for-exoplanets-with-Ai.git
 cd your-repo-name
 ```
 
